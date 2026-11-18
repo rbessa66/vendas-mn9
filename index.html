@@ -41,6 +41,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .prod{border:2px solid var(--line);background:var(--surface);color:var(--ink);border-radius:16px;padding:16px 10px;min-height:104px;display:grid;gap:6px;align-content:center;text-align:center;font-size:17px;font-weight:600}
 .prod small{font-weight:400;color:var(--muted);font-size:14px}
 .prod .p{font-size:20px;color:var(--gold);font-weight:700}
+.pes{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);color:var(--ink);justify-self:center}
+.pes.p0{border-color:var(--pine);color:var(--pine)} .pes.p1{border-color:var(--gold);color:var(--gold)}
 .prod[aria-pressed="true"]{border-color:var(--pine);background:var(--pine-soft)}
 .prod.outro{border-style:dashed;color:var(--muted)}
 .panel{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:14px}
@@ -112,6 +114,7 @@ label.f input,label.f select{width:100%}
     <div class="grid" id="artigos"></div>
     <div class="panel" id="painel" hidden>
       <h2 id="painel-t"></h2>
+      <div id="painel-pes" class="sec" style="gap:6px" hidden><span class="hint">Feito por</span><div class="chips" id="v-pes"></div></div>
       <div class="chips" id="precos"></div>
       <label class="outro-p">Outro preço <input id="preco-outro" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0,00"> €</label>
       <div class="pay">
@@ -126,6 +129,8 @@ label.f input,label.f select{width:100%}
   <section id="v-totais" hidden class="sec">
     <div class="cats" id="dias"></div>
     <div class="cards" id="cards"></div>
+    <h2>Por pessoa</h2>
+    <div class="cards" id="porpes"></div>
     <h2>Peças vendidas</h2>
     <div class="cards" id="porcat"></div>
     <h2>Vendas</h2>
@@ -155,6 +160,13 @@ label.f input,label.f select{width:100%}
   </section>
 
   <section id="v-prods" hidden class="sec">
+    <div class="panel" style="margin-top:0">
+      <h2>Quem faz as peças</h2>
+      <div class="row2">
+        <label class="f">Iniciais da 1.ª pessoa <input id="pes-0" maxlength="6" autocapitalize="characters"></label>
+        <label class="f">Iniciais da 2.ª pessoa <input id="pes-1" maxlength="6" autocapitalize="characters"></label>
+      </div>
+    </div>
     <form id="f-art" autocomplete="off">
       <h2 id="f-art-t">Novo produto</h2>
       <div class="row3">
@@ -162,6 +174,7 @@ label.f input,label.f select{width:100%}
         <label class="f">Tipo <select id="a-cat"></select></label>
         <label class="f">Preço (€) <input id="a-preco" type="number" inputmode="decimal" min="0" step="0.5" required></label>
       </div>
+      <div class="f" style="display:grid;gap:4px;font-size:14px;color:var(--muted)">Feito por <div class="chips" id="a-pes"></div></div>
       <div class="actions">
         <button class="btn solid" type="submit" id="a-guardar">Adicionar à lista</button>
         <button class="btn" type="button" id="a-cancelar" hidden>Cancelar</button>
@@ -171,7 +184,7 @@ label.f input,label.f select{width:100%}
     <div id="lista-art"></div>
     <h2>Passar a lista para outro aparelho</h2>
     <div class="panel" style="margin-top:0">
-      <p class="hint">No computador: preencham a lista aqui (ou no Excel, com o ficheiro modelo), toquem em «Exportar lista» e enviem o ficheiro por email. No tablet ou telemóvel: descarreguem o anexo e toquem em «Importar lista».</p>
+      <p class="hint">O ficheiro tem as colunas Nome; Tipo; Preço; Feito por (as iniciais). No computador: preencham a lista aqui (ou no Excel, com o ficheiro modelo), toquem em «Exportar lista» e enviem o ficheiro por email. No tablet ou telemóvel: descarreguem o anexo e toquem em «Importar lista».</p>
       <div class="actions">
         <button class="btn" id="art-exp" type="button">Exportar lista (CSV)</button>
         <button class="btn solid" id="art-imp-btn" type="button">Importar lista</button>
@@ -202,6 +215,9 @@ const KEY = "vendas-mn9-v1";
 let db = {vendas:[], encomendas:[], artigos:[]};
 try{ const s=JSON.parse(localStorage.getItem(KEY)||"null"); if(s) db=Object.assign(db,s); }catch(e){}
 if(!Array.isArray(db.artigos)) db.artigos=[];
+if(!Array.isArray(db.pessoas) || db.pessoas.length!==2) db.pessoas=["P1","P2"];
+const pesNome=i=>(i===0||i===1) ? (db.pessoas[i]||("P"+(i+1))) : "—";
+const pesTag=i=>(i===0||i===1) ? `<span class="pes p${i}">${esc(pesNome(i))}</span>` : "";
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(db)); return true; }catch(e){ showToast("Não foi possível guardar. Façam já uma cópia em CSV.",null); return false; } }
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 
@@ -230,7 +246,7 @@ function abrir(tab){
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.tab)));
 
 /* Vender */
-let catSel="todos", sel=null, preco=null;   // sel: {artigoId?, cat, nome, preco?}
+let catSel="todos", sel=null, preco=null, selPes=null;   // sel: {artigoId?, cat, nome, preco?, pessoa?}
 function renderVender(){
   const temArt=db.artigos.length>0;
   $("cats").hidden=!temArt;
@@ -239,7 +255,7 @@ function renderVender(){
     if(!cs.some(c=>c.id===catSel)) catSel="todos";
     $("cats").innerHTML=cs.map(c=>`<button class="chip" data-c="${c.id}" aria-pressed="${c.id===catSel}">${esc(c.nome)}</button>`).join("");
     const arts=db.artigos.filter(a=>catSel==="todos"||a.cat===catSel).sort((a,b)=>a.cat.localeCompare(b.cat)||a.nome.localeCompare(b.nome,"pt"));
-    $("artigos").innerHTML=arts.map(a=>`<button class="prod" data-a="${a.id}" aria-pressed="${sel&&sel.artigoId===a.id}">${esc(a.nome)}<span class="p num">${eur(a.preco)}</span><small>${esc(catNome(a.cat))}</small></button>`).join("")
+    $("artigos").innerHTML=arts.map(a=>`<button class="prod" data-a="${a.id}" aria-pressed="${sel&&sel.artigoId===a.id}">${esc(a.nome)}<span class="p num">${eur(a.preco)}</span><small>${esc(catNome(a.cat))}</small>${pesTag(a.pessoa)}</button>`).join("")
       + CATS.filter(c=>catSel==="todos"||c.id===catSel).map(c=>`<button class="prod outro" data-c2="${c.id}" aria-pressed="${sel&&!sel.artigoId&&sel.cat===c.id}">Outro: ${esc(c.nome.toLowerCase())}<small>preço à escolha</small></button>`).join("");
     $("v-hint").textContent="Toque no produto vendido.";
   } else {
@@ -251,27 +267,31 @@ function renderVender(){
 function renderPainel(){
   $("painel").hidden=!sel; $("v-hint").hidden=!!sel;
   if(!sel) return;
-  $("painel-t").textContent=sel.nome;
+  $("painel-t").innerHTML=esc(sel.nome)+(sel.pessoa===0||sel.pessoa===1?" "+pesTag(sel.pessoa):"");
+  const pedePes=!(sel.pessoa===0||sel.pessoa===1);
+  $("painel-pes").hidden=!pedePes;
+  if(pedePes) $("v-pes").innerHTML=[0,1].map(i=>`<button class="chip" data-pes="${i}" aria-pressed="${selPes===i}">${esc(pesNome(i))}</button>`).join("");
   const c=CATS.find(x=>x.id===sel.cat);
   const op=[...new Set((sel.preco!=null?[sel.preco]:[]).concat(c?c.precos:[]))].sort((a,b)=>a-b);
   const outroVal=$("preco-outro").value;
   $("precos").innerHTML=op.map(v=>`<button class="chip num" data-v="${v}" aria-pressed="${preco===v && !outroVal}">${eur(v)}</button>`).join("");
-  const ok=typeof preco==="number" && preco>0;
+  const temP=typeof preco==="number" && preco>0, temPes=selPes===0||selPes===1, ok=temP&&temPes;
   $("pag-din").disabled=!ok; $("pag-mb").disabled=!ok;
-  $("pay-hint").textContent = ok ? `Preço: ${eur(preco)}. Como pagou?` : "Escolha o preço.";
+  $("pay-hint").textContent = ok ? `Preço: ${eur(preco)}. Como pagou?` : !temPes ? "Escolha quem fez a peça." : "Escolha o preço.";
 }
+$("v-pes").addEventListener("click",e=>{const b=e.target.closest("[data-pes]");if(!b)return;selPes=Number(b.dataset.pes);renderPainel();});
 $("cats").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;catSel=b.dataset.c;sel=null;preco=null;renderVender();});
 $("artigos").addEventListener("click",e=>{
   const b=e.target.closest(".prod"); if(!b) return;
   $("preco-outro").value="";
   if(b.dataset.a){
     const a=db.artigos.find(x=>x.id===b.dataset.a);
-    if(sel&&sel.artigoId===a.id){sel=null;preco=null;}
-    else {sel={artigoId:a.id,cat:a.cat,nome:a.nome,preco:a.preco}; preco=a.preco;}
+    if(sel&&sel.artigoId===a.id){sel=null;preco=null;selPes=null;}
+    else {sel={artigoId:a.id,cat:a.cat,nome:a.nome,preco:a.preco,pessoa:a.pessoa}; preco=a.preco; selPes=(a.pessoa===0||a.pessoa===1)?a.pessoa:null;}
   } else {
     const c=CATS.find(x=>x.id===b.dataset.c2);
-    if(sel&&!sel.artigoId&&sel.cat===c.id){sel=null;preco=null;}
-    else {sel={cat:c.id,nome:c.nome,preco:null}; preco=null;}
+    if(sel&&!sel.artigoId&&sel.cat===c.id){sel=null;preco=null;selPes=null;}
+    else {sel={cat:c.id,nome:c.nome,preco:null,pessoa:null}; preco=null; selPes=null;}
   }
   renderVender();
   if(sel) $("painel").scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -279,13 +299,13 @@ $("artigos").addEventListener("click",e=>{
 $("precos").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;preco=Number(b.dataset.v);$("preco-outro").value="";renderPainel();});
 $("preco-outro").addEventListener("input",e=>{preco=num(e.target.value);renderPainel();});
 function registar(pag){
-  if(!sel || !(preco>0)) return;
-  const v={id:uid(), ts:Date.now(), produto:sel.cat, artigo:sel.nome, preco, pag};
+  if(!sel || !(preco>0) || !(selPes===0||selPes===1)) return;
+  const v={id:uid(), ts:Date.now(), produto:sel.cat, artigo:sel.nome, preco, pag, pessoa:selPes};
   db.vendas.push(v); if(!save()) return;
-  showToast(`${v.artigo} · ${eur(preco)} · ${pag==="dinheiro"?"Dinheiro":"MB Way"}`, ()=>{
+  showToast(`${v.artigo} (${pesNome(v.pessoa)}) · ${eur(preco)} · ${pag==="dinheiro"?"Dinheiro":"MB Way"}`, ()=>{
     db.vendas=db.vendas.filter(x=>x.id!==v.id); save(); showToast("Venda anulada",null);
   });
-  sel=null; preco=null; $("preco-outro").value=""; renderVender();
+  sel=null; preco=null; selPes=null; $("preco-outro").value=""; renderVender();
 }
 $("pag-din").addEventListener("click",()=>registar("dinheiro"));
 $("pag-mb").addEventListener("click",()=>registar("mbway"));
@@ -312,9 +332,11 @@ function renderTotais(){
     <div class="card"><div class="l">Dinheiro</div><div class="v num">${eur(din)}</div></div>
     <div class="card"><div class="l">MB Way</div><div class="v num">${eur(mb)}</div></div>
     <div class="card"><div class="l">Na caixa (com ${TROCO} € de troco)</div><div class="v num">${eur(din+TROCO)}</div></div>`;
+  $("porpes").innerHTML=[0,1].map(i=>{const pv=vs.filter(v=>v.pessoa===i);return `<div class="card"><div class="l">${esc(pesNome(i))} · ${pv.length} ${pv.length===1?"peça":"peças"}</div><div class="v num">${eur(pv.reduce((s,v)=>s+v.preco,0))}</div></div>`;}).join("")
+    + (vs.some(v=>!(v.pessoa===0||v.pessoa===1)) ? `<div class="card"><div class="l">Sem pessoa</div><div class="v num">${eur(vs.filter(v=>!(v.pessoa===0||v.pessoa===1)).reduce((s,v)=>s+v.preco,0))}</div></div>` : "");
   $("porcat").innerHTML=CATS.map(c=>`<div class="card"><div class="l">${esc(c.nome)}</div><div class="v num">${vs.filter(v=>v.produto===c.id).length}</div></div>`).join("");
-  $("lista").innerHTML = vs.length ? `<div class="tw"><table><thead><tr><th>Hora</th><th>Produto</th><th>Pagamento</th><th class="r">Preço</th><th></th></tr></thead><tbody>${
-    vs.map(v=>`<tr><td class="num">${hora(v.ts)}</td><td>${esc(v.artigo||catNome(v.produto))}</td><td><span class="tag ${v.pag==="dinheiro"?"din":"mb"}">${v.pag==="dinheiro"?"Dinheiro":"MB Way"}</span></td><td class="r num">${eur(v.preco)}</td><td class="r"><button class="del ${delPend===v.id?"conf":""}" data-del="${v.id}">${delPend===v.id?"Confirmar":"Apagar"}</button></td></tr>`).join("")
+  $("lista").innerHTML = vs.length ? `<div class="tw"><table><thead><tr><th>Hora</th><th>Produto</th><th>Por</th><th>Pagamento</th><th class="r">Preço</th><th></th></tr></thead><tbody>${
+    vs.map(v=>`<tr><td class="num">${hora(v.ts)}</td><td>${esc(v.artigo||catNome(v.produto))}</td><td>${pesTag(v.pessoa)||"—"}</td><td><span class="tag ${v.pag==="dinheiro"?"din":"mb"}">${v.pag==="dinheiro"?"Dinheiro":"MB Way"}</span></td><td class="r num">${eur(v.preco)}</td><td class="r"><button class="del ${delPend===v.id?"conf":""}" data-del="${v.id}">${delPend===v.id?"Confirmar":"Apagar"}</button></td></tr>`).join("")
   }</tbody></table></div>` : `<div class="empty">Ainda não há vendas neste dia.</div>`;
 }
 $("dias").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;diaSel=b.dataset.d;delPend=null;renderTotais();});
@@ -329,6 +351,7 @@ function resumoTexto(){
   const vs=db.vendas.filter(v=>dia(v.ts)===diaSel);
   const din=vs.filter(v=>v.pag==="dinheiro").reduce((s,v)=>s+v.preco,0), mb=vs.filter(v=>v.pag==="mbway").reduce((s,v)=>s+v.preco,0);
   return [`Banca MN9 · ${diaTxt(diaSel)}`, `Total: ${eur(din+mb)} (dinheiro ${eur(din)}, MB Way ${eur(mb)})`]
+    .concat([0,1].map(i=>{const pv=vs.filter(v=>v.pessoa===i);return `${pesNome(i)}: ${eur(pv.reduce((s,v)=>s+v.preco,0))} (${pv.length} ${pv.length===1?"peça":"peças"})`;}))
     .concat(CATS.map(c=>`${c.nome}: ${vs.filter(v=>v.produto===c.id).length}`)).join("\n");
 }
 $("partilhar").addEventListener("click",async()=>{
@@ -338,10 +361,11 @@ $("partilhar").addEventListener("click",async()=>{
 });
 $("exportar").addEventListener("click",()=>{
   const q=s=>`"${String(s).replace(/"/g,'""')}"`, n=v=>String(v).replace(".",",");
-  const L=[["tipo","data","hora","tipo de produto","produto ou peça","preço/valor","pagamento","nome","telemóvel","entrega","entregue"].join(";")];
-  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),n(v.preco),v.pag,"","","",""].join(";")));
-  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),n(e.valor),e.pag,q(e.nome),q(e.tel),e.entrega,e.entregue?"sim":"não"].join(";")));
-  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),n(a.preco),"","","","",""].join(";")));
+  const pn=i=>(i===0||i===1)?q(pesNome(i)):"";
+  const L=[["tipo","data","hora","tipo de produto","produto ou peça","feito por","preço/valor","pagamento","nome","telemóvel","entrega","entregue"].join(";")];
+  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),pn(v.pessoa),n(v.preco),v.pag,"","","",""].join(";")));
+  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),"",n(e.valor),e.pag,q(e.nome),q(e.tel),e.entrega,e.entregue?"sim":"não"].join(";")));
+  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),pn(a.pessoa),n(a.preco),"","","","",""].join(";")));
   const blob=new Blob(["﻿"+L.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`vendas-mn9-${dia(Date.now())}.csv`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
@@ -378,27 +402,41 @@ $("encs").addEventListener("click",e=>{
 
 /* Produtos e preços */
 $("a-cat").innerHTML=CATS.map(c=>`<option value="${c.id}">${esc(c.nome)}</option>`).join("");
-let artEdit=null, artDel=null;
+let artEdit=null, artDel=null, artPes=null;
+[0,1].forEach(i=>{
+  $("pes-"+i).value=db.pessoas[i];
+  $("pes-"+i).addEventListener("change",e=>{
+    const v=e.target.value.trim().toUpperCase()||("P"+(i+1));
+    const outro=db.pessoas[1-i];
+    if(v===outro){ e.target.value=db.pessoas[i]; showToast("As iniciais das duas pessoas têm de ser diferentes.",null); return; }
+    db.pessoas[i]=v; e.target.value=v; save(); renderArt(); showToast(`Iniciais guardadas: ${v}`,null);
+  });
+});
+function renderArtPes(){ $("a-pes").innerHTML=[0,1].map(i=>`<button type="button" class="chip" data-apes="${i}" aria-pressed="${artPes===i}">${esc(pesNome(i))}</button>`).join(""); }
+$("a-pes").addEventListener("click",e=>{const b=e.target.closest("[data-apes]");if(!b)return;artPes=Number(b.dataset.apes);renderArtPes();});
 function renderArt(){
+  renderArtPes();
   const arts=[...db.artigos].sort((a,b)=>a.cat.localeCompare(b.cat)||a.nome.localeCompare(b.nome,"pt"));
-  $("lista-art").innerHTML = arts.length ? `<div class="tw"><table><thead><tr><th>Produto</th><th>Tipo</th><th class="r">Preço</th><th></th></tr></thead><tbody>${
-    arts.map(a=>`<tr><td>${esc(a.nome)}</td><td>${esc(catNome(a.cat))}</td><td class="r num">${eur(a.preco)}</td><td class="r" style="white-space:nowrap"><button class="mini" data-edit="${a.id}">Editar</button> <button class="del ${artDel===a.id?"conf":""}" data-adel="${a.id}">${artDel===a.id?"Confirmar":"Apagar"}</button></td></tr>`).join("")
-  }</tbody></table></div><p class="hint">${arts.length} ${arts.length===1?"produto":"produtos"} na lista.</p>` : `<div class="empty">A lista está vazia. Adicionem o primeiro produto acima.</div>`;
+  const semPes=arts.filter(a=>!(a.pessoa===0||a.pessoa===1)).length;
+  $("lista-art").innerHTML = arts.length ? `<div class="tw"><table><thead><tr><th>Produto</th><th>Tipo</th><th>Feito por</th><th class="r">Preço</th><th></th></tr></thead><tbody>${
+    arts.map(a=>`<tr><td>${esc(a.nome)}</td><td>${esc(catNome(a.cat))}</td><td>${pesTag(a.pessoa)||'<span class="hint">por escolher</span>'}</td><td class="r num">${eur(a.preco)}</td><td class="r" style="white-space:nowrap"><button class="mini" data-edit="${a.id}">Editar</button> <button class="del ${artDel===a.id?"conf":""}" data-adel="${a.id}">${artDel===a.id?"Confirmar":"Apagar"}</button></td></tr>`).join("")
+  }</tbody></table></div><p class="hint">${arts.length} ${arts.length===1?"produto":"produtos"} na lista${[0,1].map(i=>`, ${arts.filter(a=>a.pessoa===i).length} de ${esc(pesNome(i))}`).join("")}.${semPes?` ${semPes} sem pessoa: na venda, a app pergunta quem fez.`:""}</p>` :`<div class="empty">A lista está vazia. Adicionem o primeiro produto acima.</div>`;
 }
-function limparForm(){ artEdit=null; $("f-art").reset(); $("f-art-t").textContent="Novo produto"; $("a-guardar").textContent="Adicionar à lista"; $("a-cancelar").hidden=true; }
+function limparForm(){ artEdit=null; artPes=null; $("f-art").reset(); renderArtPes(); $("f-art-t").textContent="Novo produto"; $("a-guardar").textContent="Adicionar à lista"; $("a-cancelar").hidden=true; }
 $("f-art").addEventListener("submit",e=>{
   e.preventDefault();
   const nome=$("a-nome").value.trim(), cat=$("a-cat").value, p=num($("a-preco").value);
   if(!nome || !(p>0)) return;
-  if(artEdit){ const a=db.artigos.find(x=>x.id===artEdit); Object.assign(a,{nome,cat,preco:p}); showToast(`${nome} atualizado`,null); }
-  else { db.artigos.push({id:uid(),nome,cat,preco:p}); showToast(`${nome} adicionado`,null); }
-  save(); const keepCat=cat; limparForm(); $("a-cat").value=keepCat; renderArt(); $("a-nome").focus();
+  if(!(artPes===0||artPes===1)){ showToast("Escolha quem fez a peça.",null); return; }
+  if(artEdit){ const a=db.artigos.find(x=>x.id===artEdit); Object.assign(a,{nome,cat,preco:p,pessoa:artPes}); showToast(`${nome} atualizado`,null); }
+  else { db.artigos.push({id:uid(),nome,cat,preco:p,pessoa:artPes}); showToast(`${nome} adicionado`,null); }
+  save(); const keepCat=cat, keepPes=artPes; limparForm(); $("a-cat").value=keepCat; artPes=keepPes; renderArt(); $("a-nome").focus();
 });
 $("a-cancelar").addEventListener("click",limparForm);
 $("lista-art").addEventListener("click",e=>{
   const ed=e.target.closest("[data-edit]");
   if(ed){ const a=db.artigos.find(x=>x.id===ed.dataset.edit); artEdit=a.id;
-    $("a-nome").value=a.nome; $("a-cat").value=a.cat; $("a-preco").value=a.preco;
+    $("a-nome").value=a.nome; $("a-cat").value=a.cat; $("a-preco").value=a.preco; artPes=(a.pessoa===0||a.pessoa===1)?a.pessoa:null; renderArtPes();
     $("f-art-t").textContent="Editar produto"; $("a-guardar").textContent="Guardar alterações"; $("a-cancelar").hidden=false;
     $("f-art").scrollIntoView({behavior:"smooth",block:"start"}); $("a-nome").focus(); return; }
   const d=e.target.closest("[data-adel]");
@@ -417,8 +455,8 @@ function baixar(nome, texto){
 $("art-exp").addEventListener("click",()=>{
   if(!db.artigos.length){ showToast("A lista está vazia.",null); return; }
   const q=s=>/[;"\n]/.test(s)?`"${String(s).replace(/"/g,'""')}"`:s;
-  const L=["Nome;Tipo;Preço"].concat([...db.artigos].sort((a,b)=>a.cat.localeCompare(b.cat)||a.nome.localeCompare(b.nome,"pt"))
-    .map(a=>[q(a.nome),catNome(a.cat),String(a.preco).replace(".",",")].join(";")));
+  const L=["Nome;Tipo;Preço;Feito por"].concat([...db.artigos].sort((a,b)=>a.cat.localeCompare(b.cat)||a.nome.localeCompare(b.nome,"pt"))
+    .map(a=>[q(a.nome),catNome(a.cat),String(a.preco).replace(".",","),(a.pessoa===0||a.pessoa===1)?q(pesNome(a.pessoa)):""].join(";")));
   baixar("produtos-mn9.csv", L.join("\r\n"));
   showToast("Lista guardada: produtos-mn9.csv",null);
 });
@@ -457,14 +495,18 @@ $("art-imp").addEventListener("change",async e=>{
   if(txt.includes("�")) txt=new TextDecoder("windows-1252").decode(buf);
   const linhas=lerCSV(txt);
   if(linhas.length && semAcentos(linhas[0][0]).startsWith("nome")) linhas.shift();
-  const novos=[], erros=[];
+  const novos=[], erros=[], desconhecidas=new Set();
+  const acharPes=t=>{ const s=semAcentos(t).replace(/\s/g,""); if(!s) return null;
+    const i=[0,1].find(k=>semAcentos(db.pessoas[k]).replace(/\s/g,"")===s); if(i!==undefined) return i;
+    if(s==="1"||s==="p1") return 0; if(s==="2"||s==="p2") return 1; desconhecidas.add(String(t).trim()); return null; };
   linhas.forEach((l,i)=>{
     const nome=(l[0]||"").trim(), cat=acharCat(l[1]||""), p=num(String(l[2]||"").replace(/[€\s]/g,""));
-    if(nome && cat && p>0) novos.push({id:uid(),nome,cat,preco:p}); else erros.push(i+2);
+    if(nome && cat && p>0) novos.push({id:uid(),nome,cat,preco:p,pessoa:acharPes(l[3]||"")}); else erros.push(i+2);
   });
   if(!novos.length){ showToast("Não encontrei produtos no ficheiro. Confirme as colunas Nome; Tipo; Preço.",null); return; }
   impPend=novos;
-  $("imp-txt").textContent=`O ficheiro tem ${novos.length} ${novos.length===1?"produto":"produtos"}`+(erros.length?` (${erros.length} ${erros.length===1?"linha ignorada":"linhas ignoradas"}: ${erros.slice(0,6).join(", ")}${erros.length>6?"…":""})`:"")+`. A lista atual tem ${db.artigos.length}.`;
+  $("imp-txt").textContent=`O ficheiro tem ${novos.length} ${novos.length===1?"produto":"produtos"}`+(erros.length?` (${erros.length} ${erros.length===1?"linha ignorada":"linhas ignoradas"}: ${erros.slice(0,6).join(", ")}${erros.length>6?"…":""})`:"")+`. A lista atual tem ${db.artigos.length}.`
+    +(desconhecidas.size?` Não reconheci estas iniciais: ${[...desconhecidas].slice(0,4).join(", ")}. Confirme as iniciais acima; esses produtos ficam sem pessoa.`:"");
   $("imp-jun").hidden=!db.artigos.length;
   $("imp-conf").hidden=false;
 });
@@ -473,7 +515,7 @@ $("imp-sub").addEventListener("click",()=>{ if(!impPend) return; db.artigos=impP
 $("imp-jun").addEventListener("click",()=>{ if(!impPend) return;
   const chave=a=>semAcentos(a.nome)+"|"+a.cat;
   const mapa=new Map(db.artigos.map(a=>[chave(a),a]));
-  impPend.forEach(n=>{ const ex=mapa.get(chave(n)); if(ex) ex.preco=n.preco; else db.artigos.push(n); });
+  impPend.forEach(n=>{ const ex=mapa.get(chave(n)); if(ex){ ex.preco=n.preco; if(n.pessoa===0||n.pessoa===1) ex.pessoa=n.pessoa; } else db.artigos.push(n); });
   save(); showToast("Produtos juntados à lista",null); fecharImp(); renderArt(); });
 $("imp-can").addEventListener("click",fecharImp);
 
