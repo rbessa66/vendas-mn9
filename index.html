@@ -215,8 +215,9 @@ const KEY = "vendas-mn9-v1";
 let db = {vendas:[], encomendas:[], artigos:[]};
 try{ const s=JSON.parse(localStorage.getItem(KEY)||"null"); if(s) db=Object.assign(db,s); }catch(e){}
 if(!Array.isArray(db.artigos)) db.artigos=[];
-if(!Array.isArray(db.pessoas) || db.pessoas.length!==2) db.pessoas=["P1","P2"];
-const pesNome=i=>(i===0||i===1) ? (db.pessoas[i]||("P"+(i+1))) : "—";
+const PESSOAS=["FB","AT"];
+if(!Array.isArray(db.pessoas) || db.pessoas.length!==2 || (db.pessoas[0]==="P1" && db.pessoas[1]==="P2")) db.pessoas=PESSOAS.slice();
+const pesNome=i=>(i===0||i===1) ? (db.pessoas[i]||PESSOAS[i]) : "—";
 const pesTag=i=>(i===0||i===1) ? `<span class="pes p${i}">${esc(pesNome(i))}</span>` : "";
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(db)); return true; }catch(e){ showToast("Não foi possível guardar. Façam já uma cópia em CSV.",null); return false; } }
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
@@ -406,7 +407,7 @@ let artEdit=null, artDel=null, artPes=null;
 [0,1].forEach(i=>{
   $("pes-"+i).value=db.pessoas[i];
   $("pes-"+i).addEventListener("change",e=>{
-    const v=e.target.value.trim().toUpperCase()||("P"+(i+1));
+    const v=e.target.value.trim().toUpperCase()||PESSOAS[i];
     const outro=db.pessoas[1-i];
     if(v===outro){ e.target.value=db.pessoas[i]; showToast("As iniciais das duas pessoas têm de ser diferentes.",null); return; }
     db.pessoas[i]=v; e.target.value=v; save(); renderArt(); showToast(`Iniciais guardadas: ${v}`,null);
