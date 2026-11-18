@@ -235,7 +235,8 @@ const CATS = [
   {id:"panos",   nome:"Panos e toalhas",  precos:[5,8,10,12,15]},
   {id:"fraldas", nome:"Fraldas de pano",  precos:[8,10,12,15,18]},
   {id:"caixas",  nome:"Caixas decoupage", precos:[10,12,15,20,25]},
-  {id:"lembr",   nome:"Lembranças",       precos:[3,4,5,6,8]}
+  {id:"lembr",   nome:"Lembranças",       precos:[3,4,5,6,8]},
+  {id:"3d",      nome:"Artigos 3D",       precos:[3,5,8,10,15]}
 ];
 const TROCO = 100;
 const KEY = "vendas-mn9-v1";
@@ -608,6 +609,7 @@ function acharCat(t){
   if(s.startsWith("frald")) return "fraldas";
   if(s.startsWith("caix")||s.includes("decoup")) return "caixas";
   if(s.startsWith("lembr")||s.startsWith("enfeit")) return "lembr";
+  if(s.startsWith("3d")||s.includes(" 3d")||s.startsWith("impress")) return "3d";
   return null;
 }
 let impPend=null;
