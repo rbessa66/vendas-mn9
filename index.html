@@ -83,7 +83,8 @@ td.r,th.r{text-align:right}
 form{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
 form h2{margin:0;font-size:18px}
 label.f{display:grid;gap:4px;font-size:14px;color:var(--muted);min-width:0}
-label.f input,label.f select{width:100%}
+label.f input,label.f select{width:100%;min-width:0;max-width:100%}
+.row2 > *,.row3 > *{min-width:0}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row3{display:grid;grid-template-columns:2fr 1.3fr 1fr;gap:10px}
 @media (max-width:520px){.row3{grid-template-columns:1fr 1fr}.row3 > :first-child{grid-column:1/-1}}
@@ -150,13 +151,31 @@ label.f input,label.f select{width:100%}
       <label class="f">Telemóvel <input id="e-tel" type="tel" inputmode="tel" required></label>
       <label class="f">Peça (cor, tamanho) <input id="e-peca" required></label>
       <div class="row2">
-        <label class="f">Valor pago (€) <input id="e-valor" type="number" inputmode="decimal" min="0" step="0.5" required></label>
-        <label class="f">Pagamento <select id="e-pag"><option value="dinheiro">Dinheiro</option><option value="mbway">MB Way</option></select></label>
+        <label class="f">Valor da peça (€) <input id="e-valor" type="number" inputmode="decimal" min="0" step="0.5" required></label>
+        <label class="f">Envio <select id="e-envio"></select></label>
       </div>
-      <label class="f">Data de entrega <input id="e-data" type="date" required></label>
+      <div id="e-morada-box" class="sec" style="gap:10px">
+        <label class="f">Morada de envio <input id="e-morada" autocomplete="street-address"></label>
+        <div class="row2">
+          <label class="f">Código postal <input id="e-cp" inputmode="numeric" placeholder="0000-000" maxlength="8"></label>
+          <label class="f">Localidade <input id="e-loc"></label>
+        </div>
+      </div>
+      <div class="cards" id="e-contas"></div>
+      <div class="row2">
+        <label class="f">Pagamento <select id="e-pag"><option value="dinheiro">Dinheiro</option><option value="mbway">MB Way</option></select></label>
+        <label class="f">Data de entrega <input id="e-data" type="date" required></label>
+      </div>
+      <p class="hint" id="e-aviso" hidden></p>
       <button class="btn solid" type="submit">Guardar encomenda</button>
     </form>
     <div id="encs"></div>
+    <h2>Tabela de portes</h2>
+    <div class="panel" style="margin-top:0">
+      <p class="hint">Escrevam o valor de cada forma de envio quando o souberem. Podem mudar os nomes, acrescentar ou apagar linhas.</p>
+      <div id="portes" class="sec" style="gap:8px"></div>
+      <div class="actions"><button class="btn" type="button" id="porte-add">Acrescentar forma de envio</button></div>
+    </div>
   </section>
 
   <section id="v-prods" hidden class="sec">
@@ -215,6 +234,11 @@ const KEY = "vendas-mn9-v1";
 let db = {vendas:[], encomendas:[], artigos:[]};
 try{ const s=JSON.parse(localStorage.getItem(KEY)||"null"); if(s) db=Object.assign(db,s); }catch(e){}
 if(!Array.isArray(db.artigos)) db.artigos=[];
+if(!Array.isArray(db.portes)) db.portes=[
+  {id:"mao", nome:"Entrega em mão", valor:0, morada:false},
+  {id:"ctt-cont", nome:"CTT Continente", valor:null, morada:true},
+  {id:"ctt-ilhas", nome:"CTT Açores e Madeira", valor:null, morada:true}
+];
 const PESSOAS=["FB","AT"];
 if(!Array.isArray(db.pessoas) || db.pessoas.length!==2 || (db.pessoas[0]==="P1" && db.pessoas[1]==="P2")) db.pessoas=PESSOAS.slice();
 const pesNome=i=>(i===0||i===1) ? (db.pessoas[i]||PESSOAS[i]) : "—";
@@ -241,7 +265,7 @@ function abrir(tab){
   TABS.forEach(t=>$("v-"+t).hidden = t!==tab);
   if(tab==="vender") renderVender();
   if(tab==="totais") renderTotais();
-  if(tab==="enc") renderEnc();
+  if(tab==="enc"){ renderEnc(); renderPortes(); renderEnvioSel(); }
   if(tab==="prods") renderArt();
 }
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>abrir(b.dataset.tab)));
@@ -326,13 +350,16 @@ function renderTotais(){
   if(!dias.includes(diaSel)) diaSel=dias[dias.length-1];
   $("dias").innerHTML=dias.map(k=>`<button class="chip" data-d="${k}" aria-pressed="${k===diaSel}">${esc(diaTxt(k))}</button>`).join("");
   const vs=db.vendas.filter(v=>dia(v.ts)===diaSel).sort((a,b)=>b.ts-a.ts);
-  const din=vs.filter(v=>v.pag==="dinheiro").reduce((s,v)=>s+v.preco,0);
-  const mb=vs.filter(v=>v.pag==="mbway").reduce((s,v)=>s+v.preco,0);
+  const es=db.encomendas.filter(e=>dia(e.ts)===diaSel), ev=e=>(e.total??e.valor)||0;
+  const din=vs.filter(v=>v.pag==="dinheiro").reduce((s,v)=>s+v.preco,0)+es.filter(e=>e.pag==="dinheiro").reduce((s,e)=>s+ev(e),0);
+  const mb=vs.filter(v=>v.pag==="mbway").reduce((s,v)=>s+v.preco,0)+es.filter(e=>e.pag==="mbway").reduce((s,e)=>s+ev(e),0);
+  const encTot=es.reduce((s,e)=>s+ev(e),0);
   $("cards").innerHTML=`
     <div class="card big"><div class="l">Total do dia</div><div class="v num">${eur(din+mb)}</div></div>
     <div class="card"><div class="l">Dinheiro</div><div class="v num">${eur(din)}</div></div>
     <div class="card"><div class="l">MB Way</div><div class="v num">${eur(mb)}</div></div>
-    <div class="card"><div class="l">Na caixa (com ${TROCO} € de troco)</div><div class="v num">${eur(din+TROCO)}</div></div>`;
+    <div class="card"><div class="l">Na caixa (com ${TROCO} € de troco)</div><div class="v num">${eur(din+TROCO)}</div></div>
+    ${es.length?`<div class="card"><div class="l">Inclui ${es.length} ${es.length===1?"encomenda paga":"encomendas pagas"}</div><div class="v num">${eur(encTot)}</div></div>`:""}`;
   $("porpes").innerHTML=[0,1].map(i=>{const pv=vs.filter(v=>v.pessoa===i);return `<div class="card"><div class="l">${esc(pesNome(i))} · ${pv.length} ${pv.length===1?"peça":"peças"}</div><div class="v num">${eur(pv.reduce((s,v)=>s+v.preco,0))}</div></div>`;}).join("")
     + (vs.some(v=>!(v.pessoa===0||v.pessoa===1)) ? `<div class="card"><div class="l">Sem pessoa</div><div class="v num">${eur(vs.filter(v=>!(v.pessoa===0||v.pessoa===1)).reduce((s,v)=>s+v.preco,0))}</div></div>` : "");
   $("porcat").innerHTML=CATS.map(c=>`<div class="card"><div class="l">${esc(c.nome)}</div><div class="v num">${vs.filter(v=>v.produto===c.id).length}</div></div>`).join("");
@@ -349,9 +376,11 @@ $("lista").addEventListener("click",e=>{
   renderTotais();
 });
 function resumoTexto(){
-  const vs=db.vendas.filter(v=>dia(v.ts)===diaSel);
-  const din=vs.filter(v=>v.pag==="dinheiro").reduce((s,v)=>s+v.preco,0), mb=vs.filter(v=>v.pag==="mbway").reduce((s,v)=>s+v.preco,0);
+  const vs=db.vendas.filter(v=>dia(v.ts)===diaSel), es=db.encomendas.filter(e=>dia(e.ts)===diaSel), ev=e=>(e.total??e.valor)||0;
+  const din=vs.filter(v=>v.pag==="dinheiro").reduce((s,v)=>s+v.preco,0)+es.filter(e=>e.pag==="dinheiro").reduce((s,e)=>s+ev(e),0);
+  const mb=vs.filter(v=>v.pag==="mbway").reduce((s,v)=>s+v.preco,0)+es.filter(e=>e.pag==="mbway").reduce((s,e)=>s+ev(e),0);
   return [`Banca MN9 · ${diaTxt(diaSel)}`, `Total: ${eur(din+mb)} (dinheiro ${eur(din)}, MB Way ${eur(mb)})`]
+    .concat(es.length?[`Encomendas pagas: ${es.length} (${eur(es.reduce((s,e)=>s+ev(e),0))}, já incluído no total)`]:[])
     .concat([0,1].map(i=>{const pv=vs.filter(v=>v.pessoa===i);return `${pesNome(i)}: ${eur(pv.reduce((s,v)=>s+v.preco,0))} (${pv.length} ${pv.length===1?"peça":"peças"})`;}))
     .concat(CATS.map(c=>`${c.nome}: ${vs.filter(v=>v.produto===c.id).length}`)).join("\n");
 }
@@ -363,10 +392,10 @@ $("partilhar").addEventListener("click",async()=>{
 $("exportar").addEventListener("click",()=>{
   const q=s=>`"${String(s).replace(/"/g,'""')}"`, n=v=>String(v).replace(".",",");
   const pn=i=>(i===0||i===1)?q(pesNome(i)):"";
-  const L=[["tipo","data","hora","tipo de produto","produto ou peça","feito por","preço/valor","pagamento","nome","telemóvel","entrega","entregue"].join(";")];
-  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),pn(v.pessoa),n(v.preco),v.pag,"","","",""].join(";")));
-  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),"",n(e.valor),e.pag,q(e.nome),q(e.tel),e.entrega,e.entregue?"sim":"não"].join(";")));
-  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),pn(a.pessoa),n(a.preco),"","","","",""].join(";")));
+  const L=[["tipo","data","hora","tipo de produto","produto ou peça","feito por","preço/valor","portes","total","pagamento","nome","telemóvel","envio","morada","código postal","localidade","entrega","entregue"].join(";")];
+  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),pn(v.pessoa),n(v.preco),"",n(v.preco),v.pag,"","","","","","","",""].join(";")));
+  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),"",n(e.valor),typeof e.portes==="number"?n(e.portes):"",n(e.total??e.valor),e.pag,q(e.nome),q(e.tel),q(e.envio||""),q(e.morada||""),q(e.cp||""),q(e.loc||""),e.entrega,e.entregue?"sim":"não"].join(";")));
+  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),pn(a.pessoa),n(a.preco),"","","","","","","","","","",""].join(";")));
   const blob=new Blob(["﻿"+L.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`vendas-mn9-${dia(Date.now())}.csv`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
@@ -374,20 +403,76 @@ $("exportar").addEventListener("click",()=>{
 });
 
 /* Encomendas */
+const temValor=p=>typeof p.valor==="number" && p.valor>=0;
+function renderEnvioSel(){
+  const atual=$("e-envio").value;
+  $("e-envio").innerHTML=db.portes.map(p=>`<option value="${p.id}">${esc(p.nome)} — ${temValor(p)?eur(p.valor):"por definir"}</option>`).join("");
+  if(db.portes.some(p=>p.id===atual)) $("e-envio").value=atual;
+  contasEnc();
+}
+function contasEnc(){
+  const p=db.portes.find(x=>x.id===$("e-envio").value);
+  const peca=num($("e-valor").value)||0, portes=p&&temValor(p)?p.valor:null;
+  $("e-morada-box").hidden=!(p&&p.morada);
+  ["e-morada","e-cp","e-loc"].forEach(id=>$(id).required=!!(p&&p.morada));
+  $("e-contas").innerHTML=`
+    <div class="card"><div class="l">Peça</div><div class="v num">${eur(peca)}</div></div>
+    <div class="card"><div class="l">Portes</div><div class="v num">${portes===null?"—":eur(portes)}</div></div>
+    <div class="card big"><div class="l">Total a pagar</div><div class="v num">${portes===null?"—":eur(peca+portes)}</div></div>`;
+  $("e-aviso").hidden=portes!==null;
+  $("e-aviso").textContent=`O valor dos portes de «${p?p.nome:""}» ainda não está definido. Preencham-no na Tabela de portes, mais abaixo.`;
+}
+["e-valor","e-envio"].forEach(id=>$(id).addEventListener("input",contasEnc));
+$("e-envio").addEventListener("change",contasEnc);
 $("f-enc").addEventListener("submit",e=>{
   e.preventDefault();
-  const enc={id:uid(),ts:Date.now(),nome:$("e-nome").value.trim(),tel:$("e-tel").value.trim(),peca:$("e-peca").value.trim(),valor:num($("e-valor").value)||0,pag:$("e-pag").value,entrega:$("e-data").value,entregue:false};
+  const p=db.portes.find(x=>x.id===$("e-envio").value);
+  if(!p || !temValor(p)){ showToast("Defina primeiro o valor dos portes.",null); return; }
+  const peca=num($("e-valor").value)||0;
+  const enc={id:uid(),ts:Date.now(),nome:$("e-nome").value.trim(),tel:$("e-tel").value.trim(),peca:$("e-peca").value.trim(),
+    valor:peca, envio:p.nome, portes:p.valor, total:peca+p.valor,
+    morada:p.morada?$("e-morada").value.trim():"", cp:p.morada?$("e-cp").value.trim():"", loc:p.morada?$("e-loc").value.trim():"",
+    pag:$("e-pag").value,entrega:$("e-data").value,entregue:false};
   db.encomendas.push(enc); if(!save()) return;
-  e.target.reset(); showToast(`Encomenda de ${enc.nome} guardada`,null); renderEnc();
+  e.target.reset(); renderEnvioSel(); showToast(`Encomenda de ${enc.nome} guardada: ${eur(enc.total)}`,null); renderEnc();
 });
+/* Tabela de portes */
+function renderPortes(){
+  $("portes").innerHTML=db.portes.map(p=>`
+    <div class="row3" data-porte="${p.id}" style="align-items:end">
+      <label class="f">Forma de envio <input data-k="nome" value="${esc(p.nome)}"></label>
+      <label class="f">Valor (€) <input data-k="valor" type="number" inputmode="decimal" min="0" step="0.05" value="${temValor(p)?p.valor:""}" placeholder="por definir"></label>
+      <div class="actions" style="gap:6px;align-items:center">
+        <label style="display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted)"><input data-k="morada" type="checkbox" ${p.morada?"checked":""} style="width:20px;height:20px;padding:0"> Pede morada</label>
+        <button class="del" type="button" data-pdel="${p.id}">Apagar</button>
+      </div>
+    </div>`).join("");
+}
+$("portes").addEventListener("change",e=>{
+  const row=e.target.closest("[data-porte]"); if(!row) return;
+  const p=db.portes.find(x=>x.id===row.dataset.porte), k=e.target.dataset.k;
+  if(k==="nome") p.nome=e.target.value.trim()||p.nome;
+  if(k==="valor"){ const v=num(e.target.value); p.valor=(v===null||v<0)?null:v; }
+  if(k==="morada") p.morada=e.target.checked;
+  save(); renderEnvioSel(); showToast("Tabela de portes guardada",null);
+});
+$("portes").addEventListener("click",e=>{
+  const b=e.target.closest("[data-pdel]"); if(!b) return;
+  if(db.portes.length<=1){ showToast("Tem de ficar pelo menos uma forma de envio.",null); return; }
+  if(b.classList.contains("conf")){ db.portes=db.portes.filter(x=>x.id!==b.dataset.pdel); save(); renderPortes(); renderEnvioSel(); }
+  else { b.classList.add("conf"); b.textContent="Confirmar"; setTimeout(()=>{ if(b.isConnected){b.classList.remove("conf");b.textContent="Apagar";} },4000); }
+});
+$("porte-add").addEventListener("click",()=>{ db.portes.push({id:uid(),nome:"Nova forma de envio",valor:null,morada:true}); save(); renderPortes(); renderEnvioSel();
+  const ins=$("portes").querySelectorAll('input[data-k="nome"]'); const last=ins[ins.length-1]; last.focus(); last.select(); });
 let encDel=null;
 function renderEnc(){
   const es=[...db.encomendas].sort((a,b)=>(a.entregue-b.entregue)||a.entrega.localeCompare(b.entrega));
   $("encs").innerHTML = es.length ? `<div class="sec">${es.map(e=>`
     <div class="enc ${e.entregue?"done":""}">
-      <div class="top"><span>${esc(e.nome)}</span><span class="num">${eur(e.valor)} pago · ${e.pag==="dinheiro"?"Dinheiro":"MB Way"}</span></div>
-      <div>${esc(e.peca)}</div>
-      <div class="meta">Telemóvel <span class="num">${esc(e.tel)}</span> · entrega ${e.entrega?esc(diaTxt(e.entrega)):"—"}</div>
+      <div class="top"><span>${esc(e.nome)}</span><span class="num">${eur(e.total??e.valor)} pago · ${e.pag==="dinheiro"?"Dinheiro":"MB Way"}</span></div>
+      <div>${esc(e.peca)}${typeof e.portes==="number"?` <span class="meta num">(peça ${eur(e.valor)} + portes ${eur(e.portes)})</span>`:""}</div>
+      <div class="meta">Telemóvel <span class="num">${esc(e.tel)}</span> · entrega ${e.entrega?esc(diaTxt(e.entrega)):"—"}${e.envio?" · "+esc(e.envio):""}</div>
+      ${e.morada?`<div class="meta">Enviar para: ${esc(e.morada)}, <span class="num">${esc(e.cp||"")}</span> ${esc(e.loc||"")}</div>`:""}
       <div class="actions"><button class="btn" data-ent="${e.id}">${e.entregue?"Marcar por entregar":"Marcar entregue"}</button><button class="del ${encDel===e.id?"conf":""}" data-edel="${e.id}">${encDel===e.id?"Confirmar":"Apagar"}</button></div>
     </div>`).join("")}</div>` : `<div class="empty">Sem encomendas.</div>`;
 }
