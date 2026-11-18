@@ -148,7 +148,10 @@ label.f input,label.f select{width:100%;min-width:0;max-width:100%}
     <form id="f-enc" autocomplete="off">
       <h2>Nova encomenda</h2>
       <label class="f">Nome <input id="e-nome" required></label>
-      <label class="f">Telemóvel <input id="e-tel" type="tel" inputmode="tel" required></label>
+      <div class="row2">
+        <label class="f">Telemóvel <input id="e-tel" type="tel" inputmode="tel" required></label>
+        <label class="f">Email do cliente <input id="e-email" type="email" inputmode="email" autocomplete="email" placeholder="opcional"></label>
+      </div>
       <label class="f">Peça (cor, tamanho) <input id="e-peca" required></label>
       <div class="row2">
         <label class="f">Valor da peça (€) <input id="e-valor" type="number" inputmode="decimal" min="0" step="0.5" required></label>
@@ -170,6 +173,11 @@ label.f input,label.f select{width:100%;min-width:0;max-width:100%}
       <button class="btn solid" type="submit">Guardar encomenda</button>
     </form>
     <div id="encs"></div>
+    <h2>Email de confirmação</h2>
+    <div class="panel" style="margin-top:0">
+      <label class="f">O nosso email (recebe uma cópia de cada encomenda) <input id="cfg-email" type="email" inputmode="email" placeholder="ex.: banca@gmail.com"></label>
+      <p class="hint">Ao guardar uma encomenda, a app abre o email já escrito para o cliente, com cópia para este endereço. Só falta tocar em Enviar.</p>
+    </div>
     <h2>Tabela de portes</h2>
     <div class="panel" style="margin-top:0">
       <p class="hint">Escrevam o valor de cada forma de envio quando o souberem. Podem mudar os nomes, acrescentar ou apagar linhas.</p>
@@ -392,10 +400,10 @@ $("partilhar").addEventListener("click",async()=>{
 $("exportar").addEventListener("click",()=>{
   const q=s=>`"${String(s).replace(/"/g,'""')}"`, n=v=>String(v).replace(".",",");
   const pn=i=>(i===0||i===1)?q(pesNome(i)):"";
-  const L=[["tipo","data","hora","tipo de produto","produto ou peça","feito por","preço/valor","portes","total","pagamento","nome","telemóvel","envio","morada","código postal","localidade","entrega","entregue"].join(";")];
-  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),pn(v.pessoa),n(v.preco),"",n(v.preco),v.pag,"","","","","","","",""].join(";")));
-  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),"",n(e.valor),typeof e.portes==="number"?n(e.portes):"",n(e.total??e.valor),e.pag,q(e.nome),q(e.tel),q(e.envio||""),q(e.morada||""),q(e.cp||""),q(e.loc||""),e.entrega,e.entregue?"sim":"não"].join(";")));
-  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),pn(a.pessoa),n(a.preco),"","","","","","","","","","",""].join(";")));
+  const L=[["tipo","data","hora","tipo de produto","produto ou peça","feito por","preço/valor","portes","total","pagamento","nome","telemóvel","email","envio","morada","código postal","localidade","entrega","entregue"].join(";")];
+  db.vendas.forEach(v=>L.push(["venda",dia(v.ts),hora(v.ts),q(catNome(v.produto)),q(v.artigo||""),pn(v.pessoa),n(v.preco),"",n(v.preco),v.pag,"","","","","","","","",""].join(";")));
+  db.encomendas.forEach(e=>L.push(["encomenda",dia(e.ts),hora(e.ts),"",q(e.peca),"",n(e.valor),typeof e.portes==="number"?n(e.portes):"",n(e.total??e.valor),e.pag,q(e.nome),q(e.tel),q(e.email||""),q(e.envio||""),q(e.morada||""),q(e.cp||""),q(e.loc||""),e.entrega,e.entregue?"sim":"não"].join(";")));
+  db.artigos.forEach(a=>L.push(["produto","","",q(catNome(a.cat)),q(a.nome),pn(a.pessoa),n(a.preco),"","","","","","","","","","","",""].join(";")));
   const blob=new Blob(["﻿"+L.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`vendas-mn9-${dia(Date.now())}.csv`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
@@ -429,13 +437,41 @@ $("f-enc").addEventListener("submit",e=>{
   const p=db.portes.find(x=>x.id===$("e-envio").value);
   if(!p || !temValor(p)){ showToast("Defina primeiro o valor dos portes.",null); return; }
   const peca=num($("e-valor").value)||0;
-  const enc={id:uid(),ts:Date.now(),nome:$("e-nome").value.trim(),tel:$("e-tel").value.trim(),peca:$("e-peca").value.trim(),
+  const enc={id:uid(),ts:Date.now(),nome:$("e-nome").value.trim(),tel:$("e-tel").value.trim(),email:$("e-email").value.trim(),peca:$("e-peca").value.trim(),
     valor:peca, envio:p.nome, portes:p.valor, total:peca+p.valor,
     morada:p.morada?$("e-morada").value.trim():"", cp:p.morada?$("e-cp").value.trim():"", loc:p.morada?$("e-loc").value.trim():"",
     pag:$("e-pag").value,entrega:$("e-data").value,entregue:false};
   db.encomendas.push(enc); if(!save()) return;
-  e.target.reset(); renderEnvioSel(); showToast(`Encomenda de ${enc.nome} guardada: ${eur(enc.total)}`,null); renderEnc();
+  e.target.reset(); renderEnvioSel(); renderEnc();
+  if(enc.email || db.nossoEmail){ showToast(`Encomenda de ${enc.nome} guardada: ${eur(enc.total)}. A abrir o email…`,null); abrirEmail(enc); }
+  else showToast(`Encomenda de ${enc.nome} guardada: ${eur(enc.total)}. Sem email para enviar.`,null);
 });
+/* Email de confirmação (abre a app de email do aparelho) */
+$("cfg-email").value=db.nossoEmail||"";
+$("cfg-email").addEventListener("change",e=>{
+  const v=e.target.value.trim();
+  if(v && !e.target.checkValidity()){ showToast("Esse email não parece válido.",null); return; }
+  db.nossoEmail=v; save(); showToast(v?`Cópias das encomendas vão para ${v}`:"Sem email para as cópias",null);
+});
+function textoEmail(e){
+  const L=[`Olá ${e.nome},`,"",
+    "Obrigada pela sua encomenda na nossa banca do Mercado de Natal de Valença (stand MN9).","",
+    `Peça: ${e.peca}`,
+    `Valor da peça: ${eur(e.valor)}`];
+  if(typeof e.portes==="number") L.push(`Portes (${e.envio}): ${eur(e.portes)}`);
+  L.push(`Total pago: ${eur(e.total??e.valor)} (${e.pag==="dinheiro"?"dinheiro":"MB Way"})`);
+  if(e.entrega) L.push(`Entrega prevista: ${new Date(e.entrega+"T12:00").toLocaleDateString("pt-PT",{day:"numeric",month:"long",year:"numeric"})}`);
+  if(e.morada) L.push(`Enviar para: ${e.morada}, ${e.cp||""} ${e.loc||""}`.trim());
+  L.push(`Telemóvel: ${e.tel}`,"","Se algum dado estiver errado ou tiver alguma dúvida, responda a este email.","","Com os melhores cumprimentos,","Banca MN9 · Artesanato feito à mão");
+  return L.join("\n");
+}
+function abrirEmail(e){
+  const para=e.email||db.nossoEmail, copia=(e.email&&db.nossoEmail&&db.nossoEmail!==e.email)?db.nossoEmail:"";
+  const assunto=`Encomenda de ${e.peca} · Banca MN9`;
+  let url=`mailto:${encodeURIComponent(para).replace(/%40/g,"@")}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(textoEmail(e))}`;
+  if(copia) url+=`&bcc=${encodeURIComponent(copia).replace(/%40/g,"@")}`;
+  const a=document.createElement("a"); a.href=url; document.body.appendChild(a); a.click(); a.remove();
+}
 /* Tabela de portes */
 function renderPortes(){
   $("portes").innerHTML=db.portes.map(p=>`
@@ -471,12 +507,14 @@ function renderEnc(){
     <div class="enc ${e.entregue?"done":""}">
       <div class="top"><span>${esc(e.nome)}</span><span class="num">${eur(e.total??e.valor)} pago · ${e.pag==="dinheiro"?"Dinheiro":"MB Way"}</span></div>
       <div>${esc(e.peca)}${typeof e.portes==="number"?` <span class="meta num">(peça ${eur(e.valor)} + portes ${eur(e.portes)})</span>`:""}</div>
-      <div class="meta">Telemóvel <span class="num">${esc(e.tel)}</span> · entrega ${e.entrega?esc(diaTxt(e.entrega)):"—"}${e.envio?" · "+esc(e.envio):""}</div>
+      <div class="meta">Telemóvel <span class="num">${esc(e.tel)}</span>${e.email?" · "+esc(e.email):""} · entrega ${e.entrega?esc(diaTxt(e.entrega)):"—"}${e.envio?" · "+esc(e.envio):""}</div>
       ${e.morada?`<div class="meta">Enviar para: ${esc(e.morada)}, <span class="num">${esc(e.cp||"")}</span> ${esc(e.loc||"")}</div>`:""}
-      <div class="actions"><button class="btn" data-ent="${e.id}">${e.entregue?"Marcar por entregar":"Marcar entregue"}</button><button class="del ${encDel===e.id?"conf":""}" data-edel="${e.id}">${encDel===e.id?"Confirmar":"Apagar"}</button></div>
+      <div class="actions">${(e.email||db.nossoEmail)?`<button class="btn" data-mail="${e.id}">Enviar email</button>`:""}<button class="btn" data-ent="${e.id}">${e.entregue?"Marcar por entregar":"Marcar entregue"}</button><button class="del ${encDel===e.id?"conf":""}" data-edel="${e.id}">${encDel===e.id?"Confirmar":"Apagar"}</button></div>
     </div>`).join("")}</div>` : `<div class="empty">Sem encomendas.</div>`;
 }
 $("encs").addEventListener("click",e=>{
+  const m=e.target.closest("[data-mail]");
+  if(m){ const x=db.encomendas.find(k=>k.id===m.dataset.mail); if(x) abrirEmail(x); return; }
   const t=e.target.closest("[data-ent]");
   if(t){ const x=db.encomendas.find(k=>k.id===t.dataset.ent); x.entregue=!x.entregue; save(); renderEnc(); return; }
   const d=e.target.closest("[data-edel]");
