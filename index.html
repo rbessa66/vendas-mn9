@@ -80,6 +80,8 @@ td.r,th.r{text-align:right}
 .actions{display:flex;flex-wrap:wrap;gap:10px}
 .btn{border:2px solid var(--pine);background:var(--surface);color:var(--pine);border-radius:12px;padding:12px 16px;font:600 16px var(--font)}
 .btn.solid{background:var(--pine);color:var(--on-accent)}
+.btn.perigo{border-color:var(--berry);color:var(--berry)}
+.btn.perigo.conf{background:var(--berry);color:var(--on-accent)}
 form{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
 form h2{margin:0;font-size:18px}
 label.f{display:grid;gap:4px;font-size:14px;color:var(--muted);min-width:0}
@@ -142,6 +144,11 @@ label.f input,label.f select{width:100%;min-width:0;max-width:100%}
       <button class="btn" id="exportar">Guardar cópia de tudo (CSV)</button>
     </div>
     <p class="hint">Façam uma cópia no fim de cada dia. As vendas ficam guardadas só neste aparelho.</p>
+    <h2>Começar do zero</h2>
+    <p class="hint">Apaga todas as vendas e encomendas (por exemplo, os testes antes da feira). A lista de produtos, os portes e o email da banca ficam.</p>
+    <div class="actions">
+      <button class="btn perigo" id="reset">Pôr tudo a zero</button>
+    </div>
   </section>
 
   <section id="v-enc" hidden class="sec">
@@ -351,6 +358,20 @@ function showToast(t, undo){
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>{$("toast").hidden=true;undoFn=null;}, undo?6000:3000);
 }
 $("toast-undo").addEventListener("click",()=>{const f=undoFn;$("toast").hidden=true;undoFn=null;if(f)f();});
+
+/* Pôr tudo a zero (vendas e encomendas; produtos, portes e email ficam) */
+let resetPend=false, resetTimer=null;
+function resetBtn(){ const b=$("reset"); b.classList.toggle("conf",resetPend); b.textContent=resetPend?"Confirmar: apagar vendas e encomendas":"Pôr tudo a zero"; }
+$("reset").addEventListener("click",()=>{
+  clearTimeout(resetTimer);
+  if(!resetPend){ resetPend=true; resetBtn(); resetTimer=setTimeout(()=>{resetPend=false;resetBtn();},5000); return; }
+  resetPend=false; resetBtn();
+  const antes={vendas:db.vendas, encomendas:db.encomendas};
+  const n=antes.vendas.length+antes.encomendas.length;
+  db.vendas=[]; db.encomendas=[]; diaSel=dia(Date.now()); delPend=null;
+  save(); renderTotais();
+  showToast(n?`Tudo a zero (${n} registos apagados)`:"Já estava tudo a zero", n?()=>{ db.vendas=antes.vendas; db.encomendas=antes.encomendas; save(); renderTotais(); showToast("Vendas e encomendas repostas",null); }:null);
+});
 
 /* Totais */
 let diaSel=dia(Date.now()), delPend=null;
